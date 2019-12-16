@@ -1,0 +1,4 @@
+#DEFAULTS kubectl1.14 helm2.12.3
+
+local kubectl.docker helm2.13.1
+someotherconfig kubectl1.14 helm2.12.3

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+YES_LIST=(yes Yes YES y Y)
+WARN_COMMANDS=(list delete init install reset rollback upgrade)
+
+in_list() {
+  local search="$1"
+  local list=("${!2}")
+  for item in ${list[*]} ; do
+    [[ $item == $search ]] && return 0
+  done
+  return 1
+}
+
+function helm-wrapper {
+  local context_array
+  context_array=(${WARN_CONTEXTS//,/ })
+
+  if [ -z $KUBE_CONTEXT ]; then
+    echo "Error: \$KUBE_CONTEXT environment variable is not defined."
+    exit 1
+  fi
+
+  if $(in_list "$KUBE_CONTEXT" context_array[@]) && $(in_list "$1" WARN_COMMANDS[@]); then
+    cowsay "You are executing in \`$KUBE_CONTEXT\` - continue?"
+    read -p 'Confirm: ' confirm
+
+    if ! in_list "$confirm" YES_LIST[@]; then
+      echo "Execution cancelled"
+      exit 0
+    fi
+  fi
+
+  exec $HELM_EXECUTABLE --kube-context $KUBE_CONTEXT $@
+}
+
+helm-wrapper $@
