@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 YES_LIST=(yes Yes YES y Y)
-WARN_COMMANDS=(list delete init install reset rollback upgrade)
+WARN_COMMANDS=(delete init install reset rollback uninstall upgrade)
 
 in_list() {
   local search="$1"
