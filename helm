@@ -31,7 +31,7 @@ function helm-wrapper {
     fi
   fi
 
-  exec $HELM_EXECUTABLE --kube-context $KUBE_CONTEXT $@
+  exec $HELM_EXECUTABLE $@ --kube-context $KUBE_CONTEXT
 }
 
 helm-wrapper $@

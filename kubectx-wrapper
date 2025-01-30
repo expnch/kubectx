@@ -16,31 +16,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#[[ -n $DEBUG ]] && set -x
+[[ -n $DEBUG ]] && set -x
 
-#set -eou pipefail
+set -eou pipefail
 IFS=$'\n\t'
+
+SELF_CMD="$0"
+
 KUBECTX="${XDG_CACHE_HOME:-$HOME/.kube}/kubectx"
 
 usage() {
-  cat <<"EOF"
+  local SELF
+  SELF="kubectx"
+  if [[ "$(basename "$0")" == kubectl-* ]]; then # invoked as plugin
+    SELF="kubectl ctx"
+  fi
+
+  cat <<EOF
 USAGE:
-  kubectx                       : list the contexts
-  kubectx <NAME>                : switch to context <NAME>
-  kubectx -                     : switch to the previous context
-  kubectx <NEW_NAME>=<NAME>     : rename context <NAME> to <NEW_NAME>
-  kubectx <NEW_NAME>=.          : rename current-context to <NEW_NAME>
-  kubectx -d <NAME> [<NAME...>] : delete context <NAME> ('.' for current-context)
+  $SELF                       : list the contexts
+  $SELF <NAME>                : switch to context <NAME>
+  $SELF -                     : switch to the previous context
+  $SELF -c, --current         : show the current context name
+  $SELF <NEW_NAME>=<NAME>     : rename context <NAME> to <NEW_NAME>
+  $SELF <NEW_NAME>=.          : rename current-context to <NEW_NAME>
+  $SELF -d <NAME> [<NAME...>] : delete context <NAME> ('.' for current-context)
                                   (this command won't delete the user/cluster entry
                                   that is used by the context)
+  $SELF -u, --unset           : unset the current context
 
-  kubectx -h,--help         : show this message
+  $SELF -h,--help             : show this message
 EOF
 }
 
 exit_err() {
    echo >&2 "${1}"
-   #exit 1
+   exit 1
 }
 
 get_contexts() {
@@ -50,7 +61,7 @@ get_contexts() {
 list_contexts() {
   set -u pipefail
   local cur ctx_list
-  cur="$KUBE_CONTEXT" || exit_err "error getting current context"
+  cur="${KUBE_CONTEXT}" || exit_err "error getting current context"
   ctx_list=$(get_contexts) || exit_err "error getting context list"
 
   local yellow darkbg normal
@@ -104,7 +115,7 @@ switch_context() {
   local helm_executable
   helm_executable="$(cat ~/.kube/version | grep ${1} | cut -d ' ' -f 3)"
   if [[ -z "$helm_executable" ]]; then
-    echo 2>&1 "error: could not find helm executable for ${1} in ~/.kube/version; using default values"
+    echo 2>&1 "error: could not find helm executable for ${1} in ~/.kube/version"
     helm_executable="$(cat ~/.kube/version | grep "#DEFAULTS" | cut -d ' ' -f 3)"
   fi
   export HELM_EXECUTABLE=$helm_executable
@@ -114,12 +125,12 @@ switch_context() {
 
 choose_context_interactive() {
   local choice
-  choice="$(list_contexts | \
-    _KUBECTX_FORCE_COLOR=1 \
-    fzf --ansi || true)"
+  choice="$(_KUBECTX_FORCE_COLOR=1 \
+    FZF_DEFAULT_COMMAND="${SELF_CMD}" \
+    fzf --ansi --no-preview || true)"
   if [[ -z "${choice}" ]]; then
     echo 2>&1 "error: you did not choose any of the options"
-    #exit 1
+    exit 1
   else
     set_context "${choice}"
   fi
@@ -127,7 +138,7 @@ choose_context_interactive() {
 
 set_context() {
   local prev
-  prev="$KUBE_CONTEXT" || exit_err "error getting current context"
+  prev="${KUBE_CONTEXT}" || exit_err "error getting current context"
 
   switch_context "${1}"
 
@@ -141,7 +152,7 @@ swap_context() {
   ctx="$(read_context)"
   if [[ -z "${ctx}" ]]; then
     echo "error: No previous context found." >&2
-    #exit 1
+    exit 1
   fi
   set_context "${ctx}"
 }
@@ -155,7 +166,12 @@ rename_context() {
   local new_name="${2}"
 
   if [[ "${old_name}" == "." ]]; then
-    old_name="$KUBE_CONTEXT"
+    old_name="${KUBE_CONTEXT}"
+  fi
+
+  if ! context_exists "${old_name}"; then
+    echo "error: Context \"${old_name}\" not found, can't rename it." >&2
+    exit 1
   fi
 
   if context_exists "${new_name}"; then
@@ -176,20 +192,27 @@ delete_context() {
   local ctx
   ctx="${1}"
   if [[ "${ctx}" == "." ]]; then
-    ctx="$KUBE_CONTEXT" || exit_err "error getting current context"
+    ctx="${KUBE_CONTEXT}" || exit_err "error getting current context"
   fi
   echo "Deleting context \"${ctx}\"..." >&2
   $KUBECTL config delete-context "${ctx}"
 }
 
-kubectx-wrapper() {
-  if hash kubectl 2>/dev/null; then
-    KUBECTL=kubectl
-  elif hash kubectl.exe 2>/dev/null; then
-    KUBECTL=kubectl.exe
-  else
-    echo >&2 "kubectl is not installed"
-    #exit 1
+unset_context() {
+  echo "Unsetting current context." >&2
+  $KUBECTL config unset current-context
+}
+
+main() {
+  if [[ -z "${KUBECTL:-}" ]]; then
+    if hash kubectl 2>/dev/null; then
+      KUBECTL=kubectl
+    elif hash kubectl.exe  2>/dev/null; then
+      KUBECTL=kubectl.exe
+    else
+      echo >&2 "kubectl is not installed"
+      exit 1
+    fi
   fi
 
   if [[ "$#" -eq 0 ]]; then
@@ -202,22 +225,29 @@ kubectx-wrapper() {
     if [[ "$#" -lt 2 ]]; then
       echo "error: missing context NAME" >&2
       usage
-      #exit 1
+      exit 1
     fi
     delete_contexts "${@:2}"
   elif [[ "$#" -gt 1 ]]; then
     echo "error: too many arguments" >&2
     usage
-    #exit 1
+    exit 1
   elif [[ "$#" -eq 1 ]]; then
     if [[ "${1}" == "-" ]]; then
       swap_context
+    elif [[ "${1}" == '-c' || "${1}" == '--current' ]]; then
+      # we don't call current_context here for two reasons:
+      # - it does not fail when current-context property is not set
+      # - it does not return a trailing newline
+      $KUBECTL config current-context
+    elif [[ "${1}" == '-u' || "${1}" == '--unset' ]]; then
+      unset_context
     elif [[ "${1}" == '-h' || "${1}" == '--help' ]]; then
       usage
     elif [[ "${1}" =~ ^-(.*) ]]; then
       echo "error: unrecognized flag \"${1}\"" >&2
       usage
-      #exit 1
+      exit 1
     elif [[ "${1}" =~ (.+)=(.+) ]]; then
       rename_context "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}"
     else
@@ -225,8 +255,8 @@ kubectx-wrapper() {
     fi
   else
     usage
-    #exit 1
+    exit 1
   fi
 }
 
-alias kubectx="kubectx-wrapper"
+main "$@"
