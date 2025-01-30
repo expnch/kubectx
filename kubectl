@@ -31,7 +31,7 @@ function kubectl-wrapper {
     fi
   fi
 
-  exec $KUBECTL_EXECUTABLE --context $KUBE_CONTEXT $@
+  exec $KUBECTL_EXECUTABLE $@ --context $KUBE_CONTEXT
 }
 
 kubectl-wrapper $@
