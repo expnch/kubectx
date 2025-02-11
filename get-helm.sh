@@ -10,9 +10,9 @@ if [[ -z "${VERSION}" ]]; then
   exit 1
 fi
 
-INSTALL_PATH=$(which kubectl | rev | cut -d '/' -f2- | rev)
+INSTALL_PATH=$(which helm | rev | cut -d '/' -f2- | rev)
 
-if [[ "${INSTALL_PATH}" == "kubectl not found" ]]; then
+if [[ "${INSTALL_PATH}" == "helm not found" ]]; then
   INSTALL_PATH="/usr/local/bin"
 fi
 
@@ -26,9 +26,11 @@ esac
 
 ARCH=$(uname -m)
 
-curl -L --output "kubectl${VERSION}" "https://dl.k8s.io/release/v${VERSION}/bin/${OS}/${ARCH}/kubectl"
+mkdir ./temp
+curl -L --output "./temp/helm.tar.gz" "https://get.helm.sh/helm-v${VERSION}-${OS}-${ARCH}.tar.gz"
+tar -xf "./temp/helm${VERSION}.tar.gz"
 
-chmod +x "./kubectl${VERSION}"
-sudo mv "./kubectl${VERSION}" "${INSTALL_PATH}/kubectl${VERSION}"
+sudo cp "./temp/${OS}-${ARCH}/helm" "${INSTALL_PATH}/helm${VERSION}"
+rm -rf "./temp"
 
-${INSTALL_PATH}/kubectl${VERSION} version --client
+${INSTALL_PATH}/helm${VERSION} version
