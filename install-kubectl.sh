@@ -5,7 +5,7 @@ INSTALL_PATH='/usr/local/bin/kubectl'
 if [ ! -f $INSTALL_PATH ]; then
   echo "No existing binary at $INSTALL_PATH.  Copying local ./kubectl..."
   sudo cp ./kubectl $INSTALL_PATH
-  exito 0
+  exit 0
 fi
 
 if [[ -z "$(diff $INSTALL_PATH ./kubectl)" ]]; then
